@@ -10,10 +10,17 @@
   },
   "permissions": [
     "activeTab",
-    "storage"
+    "storage" ,
+    "scripting"
   ],
   "host_permissions": [
     "https://*.your-domain.com/*",
     "http://localhost:3000/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": ["https://*.your-domain.com/*", "http://localhost:3000/*"],
+      "js": ["js/content.js"]
+    }
   ]
 }
