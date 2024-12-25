@@ -1,17 +1,86 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { ArrowRight, Sparkles, ThumbsDown, ThumbsUp } from 'lucide-react';
+import { BASE_URL } from './network';
 
 function App() {
  const [inputText, setInputText] = useState('');
  const [result, setResult] = useState<any>(null);
  const [loading, setLoading] = useState(false);
+ const [feedbackLoading, setFeedbackLoading] = useState(false);
+ const [feedbackStatus, setFeedbackStatus] = useState<'helpful' | 'unhelpful' | null>(null);
+ const [cacheId, setCacheId] = useState<string | null>(null);
+ useEffect(()=>{
+    console.log(cacheId);
+ },[cacheId]);
+
+ useEffect(()=>{
+  console.log(feedbackLoading);
+ },[feedbackLoading]);
+
+ async function handleThumbsUp(){
+  setFeedbackLoading(true);
+  try{
+    const response = await fetch(`${BASE_URL}/api/feedback`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      credentials: 'include',
+      body: JSON.stringify({
+        feedback: 'helpful',
+        cache_id: cacheId
+      }),
+    }); 
+    if(response.status === 401 || response.status === 400){
+      window.open(`${BASE_URL}/login`, '_blank');
+      return;
+    }
+    const data = await response.json();
+    console.log(data);
+    setFeedbackStatus('helpful');
+  } catch (error) {
+    console.error('Error:', error);
+  } finally {
+    setFeedbackLoading(false);
+  } 
+ }
+
+ async function handleThumbsDown(){
+  setFeedbackLoading(true);
+  try{
+    const response = await fetch(`${BASE_URL}/api/feedback`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      credentials: 'include',
+      body: JSON.stringify({
+        feedback: 'unhelpful',
+        cache_id: cacheId
+      }),
+    }); 
+    if(response.status === 401 || response.status === 400){
+      window.open(`${BASE_URL}/login`, '_blank');
+      return;
+    }
+    const data = await response.json();
+    console.log(data);
+    setFeedbackStatus('unhelpful');
+  } catch (error) {
+    console.error('Error:', error);
+  } finally {
+    setFeedbackLoading(false);
+  }     
+ }  
+
+
   const handleInputChange = (event: React.ChangeEvent<HTMLInputElement>) => {
    setInputText(event.target.value);
  };
   const handleCheckFact = async () => {
    setLoading(true);
    try {
-     const response = await fetch('http://localhost:3000/api/fact', {
+     const response = await fetch(`${BASE_URL}/api/fact`, {
        method: 'POST',
        headers: {
          'Content-Type': 'application/json',
@@ -24,19 +93,16 @@ function App() {
      });
       if (response.status === 401) {
        // Redirect to login page
-       window.open('YOUR_NEXTJS_APP_URL/login', '_blank');
+       window.open(`${BASE_URL}/login`, '_blank');
        return;
      }
       const data = await response.json();
       console.log(data);
      setResult(data);
+     setCacheId(data.cache_id);
    } catch (error) {
      console.error('Error:', error);
      setResult({ error: 'Please login to check fact' });
-
-     //user is not logged in, redirect to login page
-    //  window.open('http://localhost:3000', '_blank');
-
    } finally {
      setLoading(false);
    }
@@ -82,7 +148,11 @@ function App() {
                <p className="text-red-400">{result.error}</p>
                {result.login ? (
                  <div className="">
-                   <button className="w-full bg-[#00FFD1] hover:bg-[#00FFD1]/90 text-[#001233] 
+                   <button onClick={()=>{
+                    window.open(`${BASE_URL}`, '_blank');
+                   }}
+                   
+                   className="w-full bg-[#00FFD1] hover:bg-[#00FFD1]/90 text-[#001233] 
                                       font-semibold py-2 px-4 rounded-lg transition duration-200 
                                       ease-in-out flex items-center justify-center gap-2">
                      <span>Upgrade</span>
@@ -92,7 +162,7 @@ function App() {
                ):
                <div className="">
                    <button onClick={()=>{
-                    window.open('http://localhost:3000/login', '_blank');
+                    window.open(`${BASE_URL}/login`, '_blank');
                    }} className="w-full bg-[#00FFD1] hover:bg-[#00FFD1]/90 text-[#001233] 
                                       font-semibold py-2 px-4 rounded-lg transition duration-200 
                                       ease-in-out flex items-center justify-center gap-2">
@@ -141,23 +211,28 @@ function App() {
                     )}
                   </>
                 )}
-
                 {/* Feedback Buttons */}
                 <div className="flex gap-4 mt-4">
                   <button
-                    onClick={() => {/* Your thumbs up function */}}
-                    className="flex-1 flex items-center justify-center gap-2 py-2 px-4 
-                             bg-green-500/10 hover:bg-green-500/20 border border-green-500/20 
-                             rounded-lg transition-all duration-200"
+                    disabled={feedbackLoading}
+                    onClick={() => {handleThumbsUp()}}
+                    className={`flex-1 flex items-center justify-center gap-2 py-2 px-4 
+                             ${feedbackStatus === 'helpful' 
+                               ? 'bg-green-500/30 border-green-500/50' 
+                               : 'bg-green-500/10 hover:bg-green-500/20 border-green-500/20'} 
+                             border rounded-lg transition-all duration-200`}
                   >
                     <ThumbsUp className="w-5 h-5 text-green-400" />
                     <span className="text-green-400 font-medium">Helpful</span>
                   </button>
                   <button
-                    onClick={() => {/* Your thumbs down function */}}
-                    className="flex-1 flex items-center justify-center gap-2 py-2 px-4 
-                             bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 
-                             rounded-lg transition-all duration-200"
+                    disabled={feedbackLoading}
+                    onClick={() => {handleThumbsDown()}}
+                    className={`flex-1 flex items-center justify-center gap-2 py-2 px-4 
+                             ${feedbackStatus === 'unhelpful' 
+                               ? 'bg-red-500/30 border-red-500/50' 
+                               : 'bg-red-500/10 hover:bg-red-500/20 border-red-500/20'} 
+                             border rounded-lg transition-all duration-200`}
                   >
                     <ThumbsDown className="w-5 h-5 text-red-400" />
                     <span className="text-red-400 font-medium">Not Helpful</span>
