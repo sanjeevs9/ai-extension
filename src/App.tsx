@@ -1,112 +1,58 @@
-import React, { useState, useEffect } from 'react';
-import { ArrowRight, Sparkles, ThumbsDown, ThumbsUp } from 'lucide-react';
+import React, { useState, Suspense, useEffect } from 'react';
+import { Sparkles } from 'lucide-react';
 import { BASE_URL } from './network';
+import { FactCheckResponse } from './types';
+import { apiService } from './services/api';
+import { useFeedback } from './hooks/useFeedback';
+
+// Lazy load components and their associated dependencies
+const ResultsSection = React.lazy(() => import('./components/ResultsSection'));
+const FeedbackButtons = React.lazy(() => import('./components/FeedbackButtons'));
+const ErrorSection = React.lazy(() => import('./components/ErrorSection'));
 
 function App() {
- const [inputText, setInputText] = useState('');
- const [result, setResult] = useState<any>(null);
- const [loading, setLoading] = useState(false);
- const [feedbackLoading, setFeedbackLoading] = useState(false);
- const [feedbackStatus, setFeedbackStatus] = useState<'helpful' | 'unhelpful' | null>(null);
- const [cacheId, setCacheId] = useState<string | null>(null);
- useEffect(()=>{
-    console.log(cacheId);
- },[cacheId]);
+  const [inputText, setInputText] = useState('');
+  const [result, setResult] = useState<FactCheckResponse | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [cacheId, setCacheId] = useState<string | null>(null);
+  
+  const { feedbackLoading, feedbackStatus, submitFeedback, setFeedbackStatus } = useFeedback(cacheId);
 
- useEffect(()=>{
-  console.log(feedbackLoading);
- },[feedbackLoading]);
-
- async function handleThumbsUp(){
-  setFeedbackLoading(true);
-  try{
-    const response = await fetch(`${BASE_URL}/api/feedback`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      credentials: 'include',
-      body: JSON.stringify({
-        feedback: 'helpful',
-        cache_id: cacheId
-      }),
-    }); 
-    if(response.status === 401 || response.status === 400){
-      window.open(`${BASE_URL}/login`, '_blank');
-      return;
+  const handleCheckFact = async () => {
+    setLoading(true);
+    try {
+      const data = await apiService.checkFact(inputText, window.location.hostname);
+      setResult(data);
+      setCacheId(data.cache_id);
+    } catch (error) {
+      if (error instanceof Error && error.message === 'unauthorized') {
+        window.open(`${BASE_URL}/login`, '_blank');
+      }
+      setResult({ error: 'Please login to check fact', cache_id: '' });
+    } finally {
+      setLoading(false);
+      setFeedbackStatus(null);
     }
-    const data = await response.json();
-    console.log(data);
-    setFeedbackStatus('helpful');
-  } catch (error) {
-    console.error('Error:', error);
-  } finally {
-    setFeedbackLoading(false);
-  } 
- }
-
- async function handleThumbsDown(){
-  setFeedbackLoading(true);
-  try{
-    const response = await fetch(`${BASE_URL}/api/feedback`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      credentials: 'include',
-      body: JSON.stringify({
-        feedback: 'unhelpful',
-        cache_id: cacheId
-      }),
-    }); 
-    if(response.status === 401 || response.status === 400){
-      window.open(`${BASE_URL}/login`, '_blank');
-      return;
-    }
-    const data = await response.json();
-    console.log(data);
-    setFeedbackStatus('unhelpful');
-  } catch (error) {
-    console.error('Error:', error);
-  } finally {
-    setFeedbackLoading(false);
-  }     
- }  
-
+  };
 
   const handleInputChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-   setInputText(event.target.value);
- };
-  const handleCheckFact = async () => {
-   setLoading(true);
-   try {
-     const response = await fetch(`${BASE_URL}/api/fact`, {
-       method: 'POST',
-       headers: {
-         'Content-Type': 'application/json',
-       },
-       credentials: 'include', // Important for sending cookies
-       body: JSON.stringify({
-         text: inputText,
-         domain: window.location.hostname
-       }),
-     });
-      if (response.status === 401) {
-       // Redirect to login page
-       window.open(`${BASE_URL}/login`, '_blank');
-       return;
-     }
-      const data = await response.json();
-      console.log(data);
-     setResult(data);
-     setCacheId(data.cache_id);
-   } catch (error) {
-     console.error('Error:', error);
-     setResult({ error: 'Please login to check fact' });
-   } finally {
-     setLoading(false);
-   }
- };
+    setInputText(event.target.value);
+  };
+
+  useEffect(() => {
+    // Check if we're in a Chrome extension context
+    if (typeof chrome !== 'undefined' && chrome.storage) {
+      // Check if there's any selected text in storage
+      chrome.storage.local.get(['selectedText'], (result) => {
+        if (result.selectedText) {
+          setInputText(result.selectedText);
+          // Clear the storage
+          chrome.storage.local.remove('selectedText');
+        }
+      });
+    }
+  }, []);
+
   return (
     <div className="min-h-screen bg-[#001233]">
       <div className="min-w-[300px] max-w-md mx-auto overflow-hidden p-6">
@@ -140,111 +86,28 @@ function App() {
           </button>
         </div>
 
-        {/* Results Section */}
+        {/* Results Section - Lazy loaded */}
         {result && (
-           <div className="mt-6 space-y-4">
-           {result.error ? (
-             <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-lg space-y-4">
-               <p className="text-red-400">{result.error}</p>
-               {result.login ? (
-                 <div className="">
-                   <button onClick={()=>{
-                    window.open(`${BASE_URL}`, '_blank');
-                   }}
-                   
-                   className="w-full bg-[#00FFD1] hover:bg-[#00FFD1]/90 text-[#001233] 
-                                      font-semibold py-2 px-4 rounded-lg transition duration-200 
-                                      ease-in-out flex items-center justify-center gap-2">
-                     <span>Upgrade</span>
-                     <ArrowRight className="w-4 h-4" />
-                   </button>
-                 </div>
-               ):
-               <div className="">
-                   <button onClick={()=>{
-                    window.open(`${BASE_URL}/login`, '_blank');
-                   }} className="w-full bg-[#00FFD1] hover:bg-[#00FFD1]/90 text-[#001233] 
-                                      font-semibold py-2 px-4 rounded-lg transition duration-200 
-                                      ease-in-out flex items-center justify-center gap-2">
-                     <span>Login</span>
-                     <ArrowRight className="w-4 h-4" />
-                   </button>
-                 </div>
-               }
-             </div>
+          <Suspense fallback={<div className="mt-6 animate-pulse">Loading...</div>}>
+            {result.error ? (
+              <ErrorSection error={result.error} />
             ) : (
-              <div className="space-y-4">
-                {result.isOpinion ? (
-                  <div className="p-4 bg-yellow-500/10 border border-yellow-500/20 rounded-lg">
-                    <p className="font-semibold text-yellow-400">Opinion Detected</p>
-                    <p className="text-sm text-white/70 mt-2">{result.explanation}</p>
-                  </div>
-                ) : (
-                  <>
-                    <div className="p-4 bg-[#00FFD1]/10 border border-[#00FFD1]/20 rounded-lg">
-                      <div className="flex items-center justify-between mb-2">
-                        <p className="font-semibold text-white">Factual Score</p>
-                        <span className="text-[#00FFD1] font-bold">{result.factual_score}%</span>
-                      </div>
-                      <p className="text-sm text-white/70">{result.detailed_explanation || result.explanation}</p>
-                    </div>
-                    
-                    {result.references && result.references.length > 0 && (
-                      <div className="p-4 bg-white/5 border border-white/10 rounded-lg">
-                        <p className="font-semibold text-white mb-2">References</p>
-                        <ul className="space-y-2">
-                          {result.references.map((ref: string, index: number) => (
-                            <li key={index}>
-                              <a
-                                href={ref}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="text-sm text-[#00FFD1] hover:text-[#00FFD1]/80 
-                                         underline underline-offset-2"
-                              >
-                                {ref}
-                              </a>
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
-                  </>
-                )}
-                {/* Feedback Buttons */}
-                <div className="flex gap-4 mt-4">
-                  <button
-                    disabled={feedbackLoading}
-                    onClick={() => {handleThumbsUp()}}
-                    className={`flex-1 flex items-center justify-center gap-2 py-2 px-4 
-                             ${feedbackStatus === 'helpful' 
-                               ? 'bg-green-500/30 border-green-500/50' 
-                               : 'bg-green-500/10 hover:bg-green-500/20 border-green-500/20'} 
-                             border rounded-lg transition-all duration-200`}
-                  >
-                    <ThumbsUp className="w-5 h-5 text-green-400" />
-                    <span className="text-green-400 font-medium">Helpful</span>
-                  </button>
-                  <button
-                    disabled={feedbackLoading}
-                    onClick={() => {handleThumbsDown()}}
-                    className={`flex-1 flex items-center justify-center gap-2 py-2 px-4 
-                             ${feedbackStatus === 'unhelpful' 
-                               ? 'bg-red-500/30 border-red-500/50' 
-                               : 'bg-red-500/10 hover:bg-red-500/20 border-red-500/20'} 
-                             border rounded-lg transition-all duration-200`}
-                  >
-                    <ThumbsDown className="w-5 h-5 text-red-400" />
-                    <span className="text-red-400 font-medium">Not Helpful</span>
-                  </button>
-                </div>
-              </div>
+              <ResultsSection 
+                result={result}
+                FeedbackComponent={
+                  <FeedbackButtons
+                    feedbackStatus={feedbackStatus}
+                    feedbackLoading={feedbackLoading}
+                    onFeedback={submitFeedback}
+                  />
+                }
+              />
             )}
-          </div>
+          </Suspense>
         )}
       </div>
     </div>
- );
+  );
 }
 
 export default App;
